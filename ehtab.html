@@ -1,0 +1,602 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style type="text/css">
+        .container {
+            background-color: #ddd;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 10px;
+        }
+        #errorText {
+            font-size: 15px;
+            font-weight: bold;
+            color: red;
+        }
+        button.btnList {
+            border-width: 0px;
+            background-color: transparent;
+        }
+        button.btnCol {
+            border-width: 0px;
+            background-color: transparent;
+            font-size: 14px;
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: bold;
+        }
+        table.d, th.d, td.d {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+    </style>
+    <script language="javascript" type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script lang="javascript" src="./FileSaver.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.1.0/firebase.js"></script>
+</head>
+
+<body>
+    <div id='banner' style='display:table;width: 100%;'>
+        <img style='display:table-cell;' width="38px" height="38px" src="logo/HTab.png" /> 
+        <span style='display: table-cell;'>  
+            <p style="color: steelblue;">HTab - Ứng dụng quản lý dữ liệu thời gian thực</p>  
+        </span>
+        <span style='display: table-cell;' align='right'>  
+            <p id='user' style="color:midnightblue;"></p>  
+        </span>
+    </div>
+    
+    <hr />
+    <div class="container" id="login" align="center">        
+            <div align='center' id='errorText'></div>
+            <table align='center' cellspacing="0px" cellpadding="20px" border="0">
+                <tr>
+                    <td class='labeltext'>Email:</td>
+                    <td>
+                        <input id='email' type="email" value='' name="email" placeholder="Nhập tên đăng nhập" style="padding: 5px;border-radius: 5px">
+                    </td>
+                </tr>
+                <tr>
+                    <td class='labeltext'>Mật khẩu:</td>
+                    <td>
+                        <input id='mk' type="password" value='' name="mk" placeholder="Nhập mật khẩu" style="padding: 5px;border-radius: 5px">
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" align="center">
+                        <button id="btnDangnhap">Đăng nhập</button>
+                    </td>
+                </tr>
+            </table>
+    </div>
+
+    <div class="container" id='list' align='center'>
+        <div style='display: inline-block;' align='left' id='listG'></div>
+        <hr />
+        <button id="btnThoat">Thoát</button>
+    </div>
+
+    <div id="menu" align='center'>
+        <button id="btnFil">Lọc</button>
+        <button id="btnSort">Sắp xếp</button>
+    </div>
+    <div id="menuFil" align='center'>
+        <input id="inpFil" type="text" placeholder="Nhập nội dung lọc" style="padding: 5px;border-radius: 5px">
+        <button id="btnOkFil">Lọc</button>
+        <button id="btnCanFil">Hủy lọc</button>
+    </div>
+    <div id="menuSort" align='center'>
+        <button id="btnSorAZ">Từ A-Z</button>
+        <button id="btnSorZA">Từ Z-A</button>
+        <button id="btnSorCan">Hủy sắp xếp</button>
+    </div>
+
+    <div class="container" id='group' align='center'>
+        <div align='center' id='groupG'></div>
+        <hr style="margin: 2px" />
+        <div id='sheet'></div>
+        <hr />
+        <div align="center">
+            <button id="button-a">Tạo file Excel</button>
+            <button id="btnQuaylai">Quay lại</button>
+        </div>
+    </div>
+
+</body>
+
+<script>
+    // Initialize Firebase
+    const config = {
+        apiKey: "AIzaSyA6yHhciiNIj1uQZlZdqnIFz1pLFHkLX7o",
+        authDomain: "htab2019-1b907.firebaseapp.com",
+        databaseURL: "https://htab2019-1b907.firebaseio.com",
+        projectId: "htab2019-1b907",
+        storageBucket: "htab2019-1b907.appspot.com",
+        messagingSenderId: "987728059519",
+        appId: "1:987728059519:web:6b29d2838722ed6dbb334a",
+        measurementId: "G-CRMCRPN5PD"
+        };
+    firebase.initializeApp(config);
+
+    var database = firebase.database()
+    var db = firebase.firestore()
+
+    // var url_string = window.location.href
+    // var url = new URL(url_string)
+    // var G = url.searchParams.get("G") 
+    var wb = null
+    var G = ''
+    var nG = ''
+    var data = {}
+    var nameSheet = {}
+    var Snow = ''
+    var colNow = ''
+    var filter = {}
+    var sort = {}
+
+    function selectG(valG){
+        let arG=valG.split('@#')
+        G=arG[0]
+        nG=arG[1]
+        $('#login').hide()
+        $('#list').hide()
+        $('#group').show()
+        $('#button-a').hide()
+        $('#groupG').html('loading...') 
+        readG()
+    }
+    function readG(){
+        db.collection("Groups/" + G + "/Tables").onSnapshot(function (querySnapshot) {
+            let length1 = querySnapshot.size
+            let leg1 = 0
+            querySnapshot.forEach((doc) => {
+                let S = doc.id
+                let nameS = doc.data().nameS
+                //wb.SheetNames.push(nameS)
+                let array = doc.data().colsMap.cols.split('|')
+                db.collection("Groups/" + G + "/Tables/" + S + "/rows").onSnapshot(function (querySnapshot) {
+                    leg1++
+                    let length2 = querySnapshot.size
+                    let leg2 = 0
+                    let i = 1
+                    var ws_data = []
+                    querySnapshot.forEach((doc) => {
+                        leg2++
+                        let key = doc.id
+                        let datas = doc.data()
+                        let n = i
+                        i++
+                        if (key == 'r0') { i--; n = 0 }
+                        ws_data[n] = []
+                        Object.entries(datas).map((item) => {
+                            let key = item[0]
+                            let value = (item[1].value)?item[1].value:''
+                            if (key != 'user') {
+                                for (let index = 0; index < array.length; index++) {
+                                    const element = array[index];
+                                    if(element == key) ws_data[n][index]=value
+                                }
+                            }
+                        })
+
+                        //wb.Sheets[nameS] = XLSX.utils.aoa_to_sheet(ws_data);
+                        data[S]=ws_data
+                        nameSheet[S]=nameS
+                        if (leg1 == length1 && leg2 == length2) {
+                            $('#button-a').show()  
+                            loadTable()  
+                            loadSheet('')                    
+                        }
+                    })
+                })
+            })
+        })
+    }
+
+    function loadTable(){
+        //console.log('sort '+JSON.stringify(sort))
+        wb = XLSX.utils.book_new()
+        wb.Props = {
+            Title: "HTAB",
+            Subject: "Dữ liệu HTab",
+            Author: "ThaiTran",
+            CreatedDate: new Date()
+        }    
+        let content=''
+        let sheet=''
+        Object.entries(data).map((item) => {        
+            let S = item[0]
+            let dataS = item[1]
+            let dataW = []
+            let dataWB = []
+            let arSort=[]
+            let dong=[]
+            let nameS = nameSheet[S]
+            wb.SheetNames.push(nameS)
+
+            sheet=sheet+'<span><button id="btnShe'+S+'" class="btnList" onclick="selectS(this.value)" value="'+S+'@#'+nameS+'">'+nameS+'</button></span>'  
+            
+            let n = 1                
+            for (let i = 0; i < dataS.length; i++) { 
+                let val = (dataS[i])?dataS[i]:''
+                let show = true
+                let contentX=''
+                
+                contentX=contentX+'<tr>'
+                for (let j = 0; j < val.length; j++) {
+                    let filN=''
+                    if(filter[S]){if(j==filter[S].col){filN=' {Lọc:'+filter[S].value+'}'}}
+                    let sorN=''
+                    if(sort[S]){if(j==sort[S].col){sorN=' {'+sort[S].value+'}'}}
+
+                    if(i==0){contentX=contentX+'<th class="d"><button style="width:100%" class="btnCol" onclick="clickCol(this.value)" value="'+S+'@#'+j+'">'+val[j]+filN+sorN+'</button></th>'}
+                    else {
+                        if(filter[S]){ if(j==filter[S].col&&val[j].toLowerCase().indexOf(filter[S].value.toLowerCase())<0){show=false} }
+                        contentX=contentX+'<td class="d">'+val[j]+'</td>'
+                        if(show) {
+                            if(sort[S]){
+                                if(j==sort[S].col){
+                                    let valueSort=val[j]+'@#'+n
+                                    n++
+                                    arSort.push(valueSort)
+                                }
+                            }
+                        }
+                    }                    
+                }
+                contentX=contentX+'</tr>'
+                
+                if(show) { 
+                    dataW.push(val) 
+                    dong.push(contentX) 
+                }           
+            }
+
+            content=content+'<table id="tab'+S+'" class="d">'
+            if(sort[S]){ 
+                if(sort[S].value=='AZ'){arSort.sort() }
+                if(sort[S].value=='ZA'){arSort.sort().reverse() }
+                //console.log('arSort '+arSort)
+                content=content+dong[0]
+                dataWB.push(dataW[0])
+                for(let k=0;k<arSort.length;k++){
+                    let n = arSort[k].split('@#')[1]
+                    content=content+dong[n]
+                    dataWB.push(dataW[n])
+                }
+            } else {
+                for(let k=0;k<dong.length;k++){
+                    content=content+dong[k]
+                    dataWB.push(dataW[k])
+                }
+            }
+            content=content+'</table>' 
+
+            wb.Sheets[nameS] = XLSX.utils.aoa_to_sheet(dataWB);             
+        })
+
+
+        //content='<table><tr><td>hello</td><td>world</td></tr><tr><td>yan</td></tr></table>'
+        $('#groupG').html(content) 
+        $('#sheet').html(sheet) 
+    }
+    function loadSheet(S) {
+        if(S!=''){
+            Object.entries(data).map((item) => {        
+                let Sx = item[0]               
+                if(S==Sx) {$('#tab'+Sx).show()}
+                else {$('#tab'+Sx).hide()}
+            })
+        }
+        else{
+            let tt = false
+            Object.entries(data).map((item) => {        
+                let S = item[0]
+                if(tt) {$('#tab'+S).hide()}
+                tt=true
+            })                 
+        }
+    }
+
+    function clickCol(SCol) {
+        //alert('click col: '+SCol)
+        //prompt("Giá trị lọc: ", "");
+        let S = SCol.split('@#')[0]
+        Snow=S
+        let col = SCol.split('@#')[1]
+        colNow=col
+        $('#menu').show()
+    }
+    function selectS(value) {
+        let S = value.split('@#')[0]
+        Object.entries(data).map((item) => {        
+            let Sx = item[0]
+            if(S==Sx) {$('#tab'+Sx).show()}
+            else {$('#tab'+Sx).hide()}
+        }) 
+    }
+
+    function s2ab(s) {
+        var buf = new ArrayBuffer(s.length);
+        var view = new Uint8Array(buf);
+        for (var i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+        return buf;
+    }
+// set cookie
+    function setCookie(cname, cvalue, exdays) {
+        var d = new Date();
+        d.setTime(d.getTime() + (exdays*24*60*60*1000));
+        var expires = "expires="+ d.toUTCString();
+        document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
+    }
+// get cookie
+    function getCookie(cname) {
+        var name = cname + "=";
+        var decodedCookie = decodeURIComponent(document.cookie);
+        var ca = decodedCookie.split(';');
+        for(var i = 0; i <ca.length; i++) {
+            var c = ca[i];
+            while (c.charAt(0) == ' ') {
+            c = c.substring(1);
+            }
+            if (c.indexOf(name) == 0) {
+            return c.substring(name.length, c.length);
+            }
+        }
+        return "";
+    }
+// chack cookie
+    function checkCookie() {
+        let user = getCookie('user');
+        let uid=user.split('@#')[0]
+        let name=user.split('@#')[1]
+        if (name) {
+            $('#group').hide()
+            $('#login').hide()
+            $('#list').show()
+            $('#user').html('Xin chào '+name+' ')
+            $('#listG').html('<div><h4>Nhóm bạn tham gia</h4></div><div></div><div><p> Loading ... </p></div>')
+
+            db.collection("Groups").onSnapshot(function (querySnapshot) {
+                let listG = '<div><h4>Nhóm bạn tham gia</h4></div>'
+                let stt=1
+                querySnapshot.forEach(function (doc) {
+                    var mems = (doc.data().mems == undefined) ? ({}) : (doc.data().mems)
+                    let nameG = (doc.data().nameG == undefined) ? ('') : (doc.data().nameG)
+                    let G = doc.id
+
+                    if (mems[uid]) {
+                        if(stt<10) stt='0'+stt
+                        listG = listG + '<div><button class="btnList" onclick="selectG(this.value)" value="'+G+'@#'+nameG+'"><p style="color:blue;"><u>'+stt+'. '+nameG+'</u></p></button></div>'
+                        stt++
+                    }
+                })
+                $('#listG').html(listG)
+            })
+        }
+    }
+// START HTAB
+    $('#menu').hide()
+    $('#menuFil').hide()
+    $('#menuSort').hide()
+    $('#group').hide()
+    $('#login').show()
+    $('#list').hide()
+    checkCookie()
+// filter
+    $('#btnFil').click(function(){
+        $('#menu').hide()
+        $('#menuFil').show()
+    })
+    $('#btnOkFil').click(function(){
+        $('#menuFil').hide()
+        let val = $('#inpFil').val()
+        if (val != null) {
+            filter[Snow]={}
+            filter[Snow].col=colNow
+            filter[Snow].value=val
+            loadTable()
+            loadSheet(Snow)
+        }
+    })
+    $('#btnCanFil').click(function(){
+        $('#menuFil').hide()
+        //$('#inpFil').val()=null
+        delete filter[Snow]
+        loadTable()
+        loadSheet(Snow)
+    })
+// sort
+    $('#btnSort').click(function(){
+        $('#menu').hide()
+        $('#menuSort').show()
+    })
+    $('#btnSorAZ').click(function(){
+        $('#menuSort').hide()
+        sort[Snow]={}
+        sort[Snow].col=colNow
+        sort[Snow].value='AZ'
+        loadTable()
+        loadSheet(Snow)
+    })
+    $('#btnSorZA').click(function(){
+        $('#menuSort').hide()
+        sort[Snow]={}
+        sort[Snow].col=colNow
+        sort[Snow].value='ZA'
+        loadTable()
+        loadSheet(Snow)
+    })
+    $('#btnSorCan').click(function(){
+        $('#menuSort').hide()
+        delete sort[Snow]
+        loadTable()
+        loadSheet(Snow)
+    })
+
+    $('#btnDangnhap').click(function () {
+        let user = {}
+        let mess = $('#errorText')
+        mess.html('')
+        let email = $('#email').val()
+        let pass = $('#mk').val()
+        // kiểm tra email và pass
+        if (email != '' && pass != '') {
+            console.log('đăng nhập '+email+' '+pass)
+            database.ref('users').once('value', function (snapshot) {
+                snapshot.forEach(function (childSnapshot) {
+                    let uid = childSnapshot.key
+                    let emails = childSnapshot.val().email
+                    let names = childSnapshot.val().name
+                    let passwords = childSnapshot.val().password
+                    console.log('in '+emails+' '+passwords)
+                    if (email == emails) {
+                        user.email = email
+                        if (pass == passwords) {
+                            user.pass = pass
+                            user.name = names
+                            user.uid = uid
+                            setCookie("user", uid+'@#'+names, 365)
+                        }
+                    }
+                })
+
+                if (user.name) {
+                    $('#group').hide()
+                    $('#login').hide()
+                    $('#list').show()
+                    $('#user').html('Xin chào '+user.name+' ')
+                    $('#listG').html('<div><h4>Nhóm bạn tham gia</h4></div><div></div><div><p> loading ... </p></div>')
+                    let uid = user.uid
+                    db.collection("Groups").onSnapshot(function (querySnapshot) {
+                        let listG = '<div><h4>Nhóm bạn tham gia</h4></div>'
+                        let stt=1
+                        querySnapshot.forEach(function (doc) {
+                            var mems = (doc.data().mems == undefined) ? ({}) : (doc.data().mems)
+                            let nameG = (doc.data().nameG == undefined) ? ('') : (doc.data().nameG)
+                            let G = doc.id
+
+                            if (mems[uid]) {
+                                if(stt<10) stt='0'+stt
+                                listG = listG + '<div><button class="btnList" onclick="selectG(this.value)" value="'+G+'@#'+nameG+'"><p style="color:blue;"><u>'+stt+'. '+nameG+'</u></p></button></div>'
+                                stt++
+                            }
+                        })
+                        $('#listG').html(listG)
+                    })
+
+                }
+                else if (user.email) {
+                    mess.html('Bạn nhập sai mật khẩu !')
+                }
+                else {
+                    mess.html('Email chưa đăng kí !')
+                }
+            })
+        } else mess.html('Email hoặc mật khẩu trống !')
+    })
+
+    $('#btnQuaylai').click(function () {
+        G=''
+        nG=''
+        data={}
+        wb = XLSX.utils.book_new()
+        $('#login').hide()
+        $('#list').show()
+        $('#group').hide()
+    })
+
+    $('#btnThoat').click(function () {
+        setCookie("user", '', 0)
+        $('#login').show()
+        $('#list').hide()
+        $('#group').hide()
+        $('#user').html('')
+    })
+
+    $("#button-a").click(function () {
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', bookSST: false, type: 'binary' });
+        saveAs(new Blob([s2ab(wbout)], { type: "application/octet-stream" }), nG + '.xlsx');
+    })
+
+    $("#button-b").click(function () {
+        var data = [
+            { "name": "John", "city": "Seattle" },
+            { "name": "Mike", "city": "Los Angeles" },
+            { "name": "Zach", "city": "New York" }
+        ];
+
+        /* this line is only needed if you are not adding a script tag reference */
+        if (typeof XLSX == 'undefined') XLSX = require('xlsx');
+
+        /* make the worksheet */
+        var ws = XLSX.utils.json_to_sheet(data);
+
+        /* add to workbook */
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "People");
+
+        /* generate an XLSX file */
+        XLSX.writeFile(wb, "sheetjs.xlsx");
+    })
+
+    $("#button").click(function () {
+        var wb = XLSX.utils.book_new();
+        wb.Props = {
+            Title: "HTAB",
+            Subject: "Dữ liệu HTab",
+            Author: "ThaiTran",
+            CreatedDate: new Date()
+        };
+        db.collection("Groups/" + G + "/Tables").onSnapshot(function (querySnapshot) {
+            let length1 = querySnapshot.size
+            let leg1 = 0
+            querySnapshot.forEach((doc) => {
+                let S = doc.id
+                let nameS = doc.data().nameS
+                wb.SheetNames.push(nameS)
+                let array = doc.data().colsMap.cols.split('|')
+                db.collection("Groups/" + G + "/Tables/" + S + "/rows").onSnapshot(function (querySnapshot) {
+                    leg1++
+                    let length2 = querySnapshot.size
+                    let leg2 = 0
+                    let i = 1
+                    var ws_data = []
+                    querySnapshot.forEach((doc) => {
+                        leg2++
+                        let key = doc.id
+                        let datas = doc.data()
+                        let n = i
+                        i++
+                        if (key == 'r0') { i--; n = 0 }
+                        ws_data[n] = []
+                        Object.entries(datas).map((item) => {
+                            let key = item[0]
+                            let value = item[1].value
+                            if (key != 'user') {
+                                for (let index = 0; index < array.length; index++) {
+                                    const element = array[index];
+                                    if (element == key) {
+                                        ws_data[n][index] = value
+                                    }
+                                }
+                            }
+                        })
+
+                        wb.Sheets[nameS] = XLSX.utils.aoa_to_sheet(ws_data);
+                        if (leg1 == length1 && leg2 == length2) {
+                            var wbout = XLSX.write(wb, { bookType: 'xlsx', bookSST: false, type: 'binary' });
+                            saveAs(new Blob([s2ab(wbout)], { type: "application/octet-stream" }), nG + '.xlsx');
+                        }
+                    })
+                })
+            })
+        })
+    });   
+</script>
+
+</html>
